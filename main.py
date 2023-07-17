@@ -1,14 +1,13 @@
 import pygame
 import random
 import time
-import matplotlib.backends.backend_agg as agg\
-    
-import numpy as np
-import matplotlib.pyplot as plt
+from graph import SIR
+
+
 pygame.init()
 
 # Screen dimensions
-SCREEN_WIDTH, SCREEN_HEIGHT = 100, 600
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 
 # Colors
 GREEN = (0, 255, 0)
@@ -16,48 +15,24 @@ RED = (255, 0, 0)
 GREY = (128, 128, 128)
 
 #Parameters
-STARTING_AFFECTED = 1
+STARTING_AFFECTED = 5
 RECOVERY_RATE = 10 #days (days per second)
 TIME_DELAY = 30 #milliseconds
 BALL_RADIUS = 4
-BALL_COUNT = 100
-BALL_SPEED = 4
+BALL_COUNT = 30
+BALL_SPEED = 10
 INFECTION_PROBABILITY = 0.8  # Infection probability (range 0 to 1, where 1 means 100% chance of infection)
 
 #Global stats
 susceptible = BALL_COUNT - STARTING_AFFECTED
 infected = STARTING_AFFECTED
 recovered = 0
-SCREEN_WIDTH, SCREEN_HEIGHT = 1000, 600
-SIMULATION_WIDTH, SIMULATION_HEIGHT = 600, 600
-GRAPH_WIDTH, GRAPH_HEIGHT = SCREEN_WIDTH - SIMULATION_WIDTH, SCREEN_HEIGHT
+
 
 # Create the screen
-screen = pygame.display.set_mode((SIMULATION_WIDTH + GRAPH_WIDTH, max(SIMULATION_HEIGHT, GRAPH_HEIGHT)))
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags=pygame.HWSURFACE | pygame.DOUBLEBUF)
+
 pygame.display.set_caption('Epidemic Simulation')
-
-# 
-
-fig, ax = plt.subplots(figsize=(4.5, 4))
-
-
-
-plt.title("SIR graph")
-ax.set_xlabel('Days')
-ax.set_ylabel('Population')
-line_s, = ax.plot([], [], label="Susceptible", color="green")
-line_i, = ax.plot([], [], label="Infected", color="red")
-line_r, = ax.plot([], [], label="Recovered", color="grey")
-ax.set_xlim(0, 90)
-ax.set_ylim(0, BALL_COUNT)
-ax.legend()
-
-canvas = agg.FigureCanvasAgg(fig)
-
-
-# 
-
-
 
 # Ball class
 class Ball:
@@ -75,13 +50,11 @@ class Ball:
         self.y += self.dy
 
         # Bounce off the edges
-        if self.x - self.radius <= 0 or self.x + self.radius >= SIMULATION_WIDTH:
+        if self.x - self.radius <= 0 or self.x + self.radius >= SCREEN_WIDTH:
             self.dx *= -1
 
-        if self.y - self.radius <= 0 or self.y + self.radius >= SIMULATION_HEIGHT:
+        if self.y - self.radius <= 0 or self.y + self.radius >= SCREEN_HEIGHT:
             self.dy *= -1
-        
-        
 
     def draw(self):
         pygame.draw.circle(screen, self.color, (self.x, self.y), self.radius)
@@ -95,9 +68,6 @@ class Ball:
                 infected -= 1
                 recovered += 1
                 self.frames_infected = 0  # Reset frames infected
-                
-        
-        
 
 
 # Create a list to store all the balls
@@ -108,8 +78,8 @@ for i in range(BALL_COUNT):
     else:
         color = GREEN
 
-    x = random.randint(BALL_RADIUS, SIMULATION_WIDTH - BALL_RADIUS)
-    y = random.randint(BALL_RADIUS, SIMULATION_HEIGHT - BALL_RADIUS)
+    x = random.randint(BALL_RADIUS, SCREEN_WIDTH - BALL_RADIUS)
+    y = random.randint(BALL_RADIUS, SCREEN_HEIGHT - BALL_RADIUS)
     balls.append(Ball(x, y, BALL_RADIUS, color))
 
 
@@ -119,49 +89,47 @@ def handle_collisions():
 
     for i in range(len(balls)):
         for j in range(i + 1, len(balls)):
-            dx = balls[j].x - balls[i].x
-            dy = balls[j].y - balls[i].y
-            distance = ((dx ** 2) + (dy ** 2)) ** 0.5
-
-            if distance < (balls[i].radius + balls[j].radius):
-                if balls[i].color == GREEN and balls[j].color == RED:
+            ball1 = balls[i]
+            ball2 = balls[j]
+            
+            dx = ball2.x - ball1.x
+            dy = ball2.y - ball1.y
+            distance_squared = dx**2 + dy**2
+            
+            if distance_squared < (2 * BALL_RADIUS) ** 2:  # Check if the balls are within 2 times the diameter (early exit condition)
+                if ball1.color == GREEN and ball2.color == RED:
                     if random.random() < INFECTION_PROBABILITY:
-                        balls[i].color = RED
+                        ball1.color = RED
                         susceptible -= 1
                         infected += 1
 
-                if balls[j].color == GREEN and balls[i].color == RED:
+                if ball2.color == GREEN and ball1.color == RED:
                     if random.random() < INFECTION_PROBABILITY: 
-                        balls[j].color = RED
+                        ball2.color = RED
                         susceptible -= 1
                         infected += 1
 
-
-# Lists to store data for plotting
-days_data = []
-susceptible_data = []
-infected_data = []
-recovered_data = []
-
-def update_graph():
-    line_s.set_data(days_data, susceptible_data)
-    line_i.set_data(days_data, infected_data)
-    line_r.set_data(days_data, recovered_data)
-    ax.set_xlim(0, days + 1)
 
 
 # Game loop
+
+days_list = [0]
+susceptible_list = [susceptible]
+infected_list = [0]
+recovered_list = [0]
+
+
 font = pygame.font.Font(None, 36)
 clock = pygame.time.Clock()
 time_elapsed = 0
 days = 1  # Initialize day counter
-while True:
+running = True
+while running:
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-
+        if event.type == pygame.QUIT or infected == 0:
+            running = False
+        
     screen.fill((0, 0, 0))
-    pygame.draw.rect(screen, (255, 255, 255), (0, 0, SIMULATION_WIDTH, SIMULATION_HEIGHT), 2)
 
     # Move and draw the balls
     for ball in balls:
@@ -181,27 +149,19 @@ while True:
     # Update the day counter if a day has passed
     if time_elapsed >= 1:
         days += 1
-        time_elapsed = 0  # Reset time_elapsed for the next day
-        
-        days_data.append(days)
-        susceptible_data.append(susceptible)
-        infected_data.append(infected)
-        recovered_data.append(recovered)
+        time_elapsed = 0 
 
-        # Update the graph data
-        update_graph()
-        
-    canvas.draw()
-    renderer = canvas.get_renderer()
-    raw_data = renderer.tostring_rgb()
-    size = canvas.get_width_height()
-    surf = pygame.image.fromstring(raw_data, size, "RGB")
-    graph_position = (SCREEN_WIDTH - 400, 125)  # Adjust the position of the graph on the screen
-    screen.blit(surf, graph_position)
+        days_list.append(days)
+        susceptible_list.append(susceptible)
+        infected_list.append(infected)
+        recovered_list.append(recovered)
+         # Reset time_elapsed for the next day
 
-    
     # Render the day counter title
     day_text = font.render(f"Day {days}, Infected: {infected}, Susceptible: {susceptible}, Recovered: {recovered}", True, (255, 255, 255))
     screen.blit(day_text, (10, 10))
 
     pygame.display.flip()
+
+
+SIR(days_list, susceptible_list, infected_list, recovered_list)
